@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "skills": {
+    "manim-composer": {
+      "source": "adithya-s-k/manim_skill",
+      "sourceType": "github",
+      "computedHash": "6cd978db31ce962c847783a3c76c099185ed31cad6a37efae591e2a87c50b758"
+    },
+    "manimce-best-practices": {
+      "source": "adithya-s-k/manim_skill",
+      "sourceType": "github",
+      "computedHash": "b39acc1024b23c39cfdb187659c2d046277fb030767bbca3a0a3b22bbcf780fb"
+    },
+    "manimgl-best-practices": {
+      "source": "adithya-s-k/manim_skill",
+      "sourceType": "github",
+      "computedHash": "2e6d569180c2e3c52d8d7089b64e952ecc7a200838b14523a8467289da6c4766"
+    }
+  }
+}

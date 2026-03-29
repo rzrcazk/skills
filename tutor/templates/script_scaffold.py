@@ -57,6 +57,12 @@ class MathScene(Scene):
         # TODO: 根据分镜脚本填写
     ]
 
+    # ========== 字幕渲染开关 ==========
+    # False（默认）= 不在画面中渲染字幕，使用外部 SRT 文件在剪映处理
+    # True = 在 Manim 画面中烧录字幕（旧工作流）
+    # 推荐使用 False：SRT 文件由 scripts/generate_srt.py 自动生成
+    RENDER_SUBTITLES = False
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.audio_dir = "audio"
@@ -207,12 +213,18 @@ class MathScene(Scene):
         """
         创建字幕对象（返回普通 Text，避免 pickle 问题）
 
+        注意：当 RENDER_SUBTITLES = False 时返回 None。
+        建议使用 show_subtitle_with_audio() 或 show_subtitle_timed() 替代直接调用本方法。
+
         参数:
             text: 字幕文本
             position: 字幕位置（默认底部）
 
-        返回：Text 对象
+        返回：Text 对象，或 None（当 RENDER_SUBTITLES = False）
         """
+        if not self.RENDER_SUBTITLES:
+            return None
+
         subtitle = Text(text, font_size=36, color=self.COLORS['text'])
         subtitle.to_edge(position)
         return subtitle
@@ -229,6 +241,8 @@ class MathScene(Scene):
         """
         显示字幕并在指定时间后自动退场（避免文字残留）
 
+        当 RENDER_SUBTITLES = False 时，仅等待 duration 秒后返回 None。
+
         参数:
             text: 字幕文本
             duration: 显示总时长（秒），包含淡入淡出时间
@@ -238,6 +252,10 @@ class MathScene(Scene):
 
         使用场景：分镜动画中标注了"持续X秒"或"→退场"时
         """
+        if not self.RENDER_SUBTITLES:
+            self.wait(duration)
+            return None
+
         subtitle = self.create_subtitle(text, position)
         self.play(self.fade_in(subtitle), run_time=fade_in_time)
         self.wait(duration - fade_in_time - fade_out_time)
@@ -248,11 +266,17 @@ class MathScene(Scene):
         """
         显示字幕并持续到音频结束（适用于幕内主要字幕）
 
+        当 RENDER_SUBTITLES = False 时，仅等待 audio_duration 秒后返回 None。
+
         参数:
             text: 字幕文本
             audio_duration: 音频时长（秒）
             position: 字幕位置
         """
+        if not self.RENDER_SUBTITLES:
+            self.wait(audio_duration)
+            return None
+
         subtitle = self.create_subtitle(text, position)
         self.play(self.fade_in(subtitle), run_time=0.5)
         self.wait(audio_duration - 1.0)  # 预留退场时间
