@@ -4,9 +4,8 @@ Unified State Manager - 统一状态管理器
 
 功能：
 1. 统一管理 workflow_state.json 和 segment_pipeline.json
-2. 自动同步场景级并行生成的状态
-3. 提供一致的状态查询和更新接口
-4. 支持中断恢复和模式切换
+2. 提供一致的状态查询和更新接口
+3. 支持中断恢复和模式切换
 
 状态文件结构：
 {
@@ -18,7 +17,7 @@ Unified State Manager - 统一状态管理器
     "knowledge_level": "初中"
   },
   "current_phase": "planning",  // planning | audio | render | completed
-  "render_mode": "auto",        // auto | scene | segment | standard
+  "render_mode": "auto",        // auto | segment | standard
 
   "phases": {
     "planning": {
@@ -33,7 +32,7 @@ Unified State Manager - 统一状态管理器
     },
     "render": {
       "status": "in_progress",
-      "mode": "scene",  // scene | segment | standard
+      "mode": "segment",  // segment | standard
       "progress": {
         "total": 10,
         "completed": 5,
@@ -58,6 +57,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from constants import STEP_NAMES, DECISION_LABELS, CHECKPOINT_LABELS
+
 # 延迟导入，避免循环依赖
 def _atomic_write_json(file_path, data):
     from utils import atomic_write_json
@@ -74,7 +75,7 @@ class StateManager:
     PHASE_STATUS = ["pending", "in_progress", "completed"]
 
     # 渲染模式
-    RENDER_MODES = ["auto", "scene", "segment", "standard"]
+    RENDER_MODES = ["auto", "segment", "standard"]
 
     # 场景/段状态
     ITEM_STATUS = ["pending", "generating", "generated", "confirmed", "rejected", "fixing"]
@@ -239,8 +240,6 @@ class StateManager:
         if (audio_duration < CONFIG.render.short_video_threshold
                 and scenes_count <= CONFIG.render.max_scenes_for_standard):
             mode = "standard"
-        elif audio_duration < CONFIG.render.medium_video_threshold:
-            mode = "scene"
         else:
             mode = "segment"
 
@@ -295,12 +294,18 @@ class StateManager:
         return self.get_render_items("rejected")
 
     def _update_progress(self):
-        """更新进度统计"""
         items = self._state["phases"]["render"]["items"]
+        completed = confirmed = 0
+        for i in items:
+            s = i["status"]
+            if s == "generated":
+                completed += 1
+            elif s == "confirmed":
+                confirmed += 1
         self._state["phases"]["render"]["progress"] = {
             "total": len(items),
-            "completed": len([i for i in items if i["status"] == "generated"]),
-            "confirmed": len([i for i in items if i["status"] == "confirmed"])
+            "completed": completed,
+            "confirmed": confirmed,
         }
 
     def get_progress(self) -> Dict:
@@ -433,14 +438,6 @@ class StateManager:
             })
 
         self.add_render_items(items)
-
-        # 更新进度
-        self._state["phases"]["render"]["progress"] = {
-            "total": len(segments),
-            "completed": len([s for s in segments if s.get("status") == "generated"]),
-            "confirmed": len([s for s in segments if s.get("status") == "confirmed"])
-        }
-
         self.save()
         return True
 
@@ -465,13 +462,7 @@ class StateManager:
         step = self._state.get("workflow_step", 0)
         decisions = self._state.get("decisions", {})
 
-        step_names = {
-            0: "类别选择", 1: "知识水平确认", 2: "主题分析",
-            2.5: "检查点1-大纲确认", 3: "HTML预览", 3.5: "检查点2-图形确认",
-            4: "分镜脚本", 4.5: "检查点3-分镜确认", 5: "TTS生成",
-            6: "验证更新", 7: "脚手架", 8: "生成代码", 9: "检查渲染", 10: "更新索引"
-        }
-        current_step_name = step_names.get(float(step), f"步骤{step}")
+        current_step_name = STEP_NAMES.get(float(step), f"步骤{step}")
 
         lines = [
             f"# 会话简报：{title}（{level}）",
@@ -506,20 +497,14 @@ class StateManager:
         # 已保存决策
         if decisions:
             lines.append("## 已确认决策")
-            decision_labels = {
-                "introduction_method": "引入方式",
-                "proof_method": "证明方法",
-                "duration_estimate": "预计时长",
-                "scene_count": "场景数量",
-            }
             for key, value in decisions.items():
-                label = decision_labels.get(key, key)
+                label = DECISION_LABELS.get(key, key)
                 lines.append(f"- {label}：{value}")
             lines.append("")
 
         # 检查点反馈（用户拒绝原因）
         checkpoints = self._state.get("checkpoints", {})
-        cp_labels = {"checkpoint1": "大纲确认", "checkpoint2": "图形确认", "checkpoint3": "分镜确认"}
+        cp_labels = CHECKPOINT_LABELS
         cp_feedback_lines = []
         for key, label in cp_labels.items():
             cp = checkpoints.get(key, {})
@@ -536,14 +521,8 @@ class StateManager:
         failures = self.get_failures()
         if failures:
             lines.append("## 失败记录（避免重蹈覆辙）")
-            step_names = {
-                0: "类别选择", 1: "知识水平确认", 2: "主题分析",
-                2.5: "大纲确认", 3: "HTML预览", 3.5: "图形确认",
-                4: "分镜脚本", 4.5: "分镜确认", 5: "TTS生成",
-                6: "验证更新", 7: "脚手架", 8: "生成代码", 9: "检查渲染", 10: "更新索引"
-            }
             for f in failures[-5:]:  # 只展示最近5条
-                sname = step_names.get(float(f["step"]), f"步骤{f['step']}")
+                sname = STEP_NAMES.get(float(f["step"]), f"步骤{f['step']}")
                 method = f"（尝试方法：{f['method_tried']}）" if f.get("method_tried") else ""
                 lines.append(f"- 步骤{f['step']} {sname}：{f['reason']}{method}")
             lines.append("")
@@ -554,8 +533,6 @@ class StateManager:
         script_steps = {5.0: "generate_tts.py", 6.0: "validate_audio.py", 9.0: "check.py + render.py"}
 
         lines.append("## 下一步")
-        scripts_base = "python3 " + str(Path(__file__).parent / "step_runner.py").replace(str(self.project_dir) + "/", "../" * len(self.project_dir.parts))
-
         if next_step in offline_steps:
             prompt_file = offline_steps[next_step]
             lines.append(f"1. 导出离线 prompt：`python3 scripts/step_runner.py --export {int(next_step)} .`")

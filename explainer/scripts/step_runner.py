@@ -24,6 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from state_manager import StateManager
+from constants import LEVEL_CONSTRAINTS, DECISION_LABELS
 
 # ========== 步骤定义 ==========
 
@@ -52,12 +53,6 @@ STEPS = [
      "script": "check.py && python3 scripts/render.py"},
     {"id": 10,  "name": "更新索引",         "mode": "online",  "output": "CLAUDE.md"},
 ]
-
-LEVEL_CONSTRAINTS = {
-    "初中": "禁止使用：微积分、复数、向量点积、行列式、三角函数（sin/cos/tan 除基础定义外）",
-    "高中": "禁止使用：大学微积分、复变函数、抽象代数",
-    "大学": "无特殊约束，但需符合所学专业年级",
-}
 
 SCRIPTS_DIR = Path(__file__).parent
 PROMPTS_DIR = SCRIPTS_DIR / "prompts"
@@ -309,13 +304,7 @@ def cmd_handoff(project_dir: Path, reason: str = ""):
                      if not (project_dir / fname).exists()]
 
     # 决策摘要
-    decision_labels = {
-        "introduction_method": "引入方式",
-        "proof_method": "证明方法",
-        "duration_estimate": "预计时长",
-        "scene_count": "场景数量",
-    }
-    decision_lines = [f"- {decision_labels.get(k, k)}：{v}" for k, v in decisions.items()]
+    decision_lines = [f"- {DECISION_LABELS.get(k, k)}：{v}" for k, v in decisions.items()]
 
     # 下一步操作说明
     if step_mode == "offline":
@@ -401,13 +390,7 @@ def cmd_decide(key: str, value: str, project_dir: Path):
     manager.save_decision(key, value)
     manager.generate_session_brief()
 
-    decision_labels = {
-        "introduction_method": "引入方式",
-        "proof_method": "证明方法",
-        "duration_estimate": "预计时长",
-        "scene_count": "场景数量",
-    }
-    label = decision_labels.get(key, key)
+    label = DECISION_LABELS.get(key, key)
     print(f"✅ 已保存决策：{label} = {value}")
     print(f"   会话简报已更新：{project_dir / 'session_brief.md'}")
 

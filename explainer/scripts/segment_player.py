@@ -23,12 +23,14 @@ import json
 import subprocess
 import sys
 import argparse
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict
 from dataclasses import dataclass
 
 sys.path.insert(0, str(Path(__file__).parent))
 from segment_pipeline import SegmentPipeline, Segment
+from utils import parse_srt_time, format_time
 
 
 @dataclass
@@ -113,7 +115,7 @@ class SegmentPlayer:
             print("📜 字幕预览:")
             subtitles = self._load_subtitles(subtitle_path)
             for sub in subtitles[:3]:  # 只显示前3条
-                print(f"   [{self._format_time(sub['start'])}] {sub['text'][:40]}...")
+                print(f"   [{format_time(sub['start'], 'human')}] {sub['text'][:40]}...")
             if len(subtitles) > 3:
                 print(f"   ... 共 {len(subtitles)} 条字幕")
             print()
@@ -132,23 +134,12 @@ class SegmentPlayer:
 
                 # 解析时间
                 start_str = time_line.split(' --> ')[0]
-                start = self._parse_srt_time(start_str)
+                start = parse_srt_time(start_str)
 
                 subtitles.append({"start": start, "text": text})
 
         return subtitles
 
-    def _parse_srt_time(self, time_str: str) -> float:
-        """解析 SRT 时间"""
-        time_str = time_str.replace(',', '.')
-        parts = time_str.split(':')
-        return float(parts[0]) * 3600 + float(parts[1]) * 60 + float(parts[2])
-
-    def _format_time(self, seconds: float) -> str:
-        """格式化时间"""
-        mins = int(seconds // 60)
-        secs = int(seconds % 60)
-        return f"{mins}:{secs:02d}"
 
     def _play_video(self, segment: Segment) -> bool:
         """
@@ -334,7 +325,7 @@ class SegmentPlayer:
             "type": issue_type,
             "description": description,
             "severity": severity,
-            "timestamp": subprocess.check_output(["date", "+%Y-%m-%dT%H:%M:%S"]).decode().strip()
+            "timestamp": datetime.now().isoformat()
         }
 
     def _show_keyframes(self, segment: Segment):

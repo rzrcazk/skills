@@ -1,47 +1,23 @@
-"""
-Ending Scene Template
-系列结束场景模板 - 总结预告式
-
-功能：
-- 本集核心要点回顾
-- 下集内容预告
-- 系列Logo淡出
-- 结束音乐
-
-使用方式：
-1. 导入此模板: from templates.ending_scene import EndingScene
-2. 继承或直接使用 EndingScene
-3. 配置要点内容和下集预告
-"""
+"""Ending Scene Template — 系列结束场景模板（总结预告式）"""
 
 from manim import *
 import os
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from templates.shared import COLORS, CANVAS_CONFIG
 
 
 class EndingScene(Scene):
-    """
-    系列结束模板 - 总结预告式
-
-    总时长：约10-12秒
-    - 要点回顾：5秒
-    - 下集预告：3秒
-    - Logo淡出：2秒
-    """
+    """系列结束模板 — 总结预告式"""
 
     # 画布配置
-    config.pixel_width = 1920
-    config.pixel_height = 1080
-    config.frame_rate = 60
+    config.pixel_width = CANVAS_CONFIG["pixel_width"]
+    config.pixel_height = CANVAS_CONFIG["pixel_height"]
+    config.frame_rate = CANVAS_CONFIG["frame_rate"]
 
     # 配色方案
-    COLORS = {
-        'background': '#1a1a2e',      # 深蓝背景
-        'primary': '#4ecca3',          # 主色（青色）
-        'secondary': '#e94560',        # 辅助色（红色）
-        'highlight': '#ffc107',        # 高亮色（黄色/金色）
-        'text': '#ffffff',             # 文字白色
-        'text_secondary': '#aaaaaa',   # 次要文字
-    }
+    COLORS = COLORS
 
     # 系列信息
     SERIES_NAME = "数学之旅"
@@ -330,47 +306,3 @@ class EndingSceneWithExercise(EndingScene):
             FadeOut(hint),
             run_time=0.5
         )
-
-
-# ========== 配置指南 ==========
-"""
-使用说明：
-
-1. 基础使用（继承模板）
-   ```python
-   from templates.ending_scene import EndingScene
-
-   class MyEnding(EndingScene):
-       SERIES_NAME = "物理世界"
-       EPISODE_TITLE = "牛顿定律"
-       NEXT_EPISODE = "能量守恒"  # 需要用户确认
-       KEY_POINTS = [
-           "牛顿第一定律：惯性定律",
-           "牛顿第二定律：F = ma",
-           "牛顿第三定律：作用力与反作用力",
-       ]
-   ```
-
-2. 使用练习引导式
-   ```python
-   from templates.ending_scene import EndingSceneWithExercise
-
-   class MyEndingWithExercise(EndingSceneWithExercise):
-       KEY_POINTS = [...]
-       NEXT_EPISODE = "..."
-       EXERCISE_QUESTION = "计算这个物体的加速度..."
-       EXERCISE_HINT = "（提示：使用F=ma）"
-   ```
-
-3. 音频配置
-   - 准备结束音频：audio/audio_999_结尾.wav
-   - 时长建议：10-12秒
-   - 内容建议：要点回顾 + 下集预告 + 结束语
-
-4. 关键注意点
-   - NEXT_EPISODE 必须用户确认，不能AI自行决定
-   - KEY_POINTS 建议3-4条，简洁明了
-   - 要点内容需要与视频实际内容一致
-
-配色方案与开场模板保持一致。
-"""

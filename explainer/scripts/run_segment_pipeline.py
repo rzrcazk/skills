@@ -23,7 +23,6 @@ Segment Pipeline Runner - 分段流水线主控脚本
     python run_segment_pipeline.py --project . --auto-confirm
 """
 
-import json
 import subprocess
 import sys
 import time
@@ -33,6 +32,7 @@ from typing import Optional, List
 
 sys.path.insert(0, str(Path(__file__).parent))
 from segment_pipeline import SegmentPipeline, Segment
+from utils import find_storyboard
 from segment_generator import SegmentGenerator
 from segment_merger import SegmentMerger
 from segment_player import SegmentPlayer, ConfirmResult
@@ -149,15 +149,7 @@ class SegmentPipelineRunner:
 
     def _find_storyboard(self) -> Optional[Path]:
         """查找分镜脚本"""
-        candidates = [
-            self.project_dir / "分镜脚本.md",
-            self.project_dir / "storyboard.md",
-            self.project_dir / "分镜.md",
-        ]
-        for c in candidates:
-            if c.exists():
-                return c
-        return None
+        return find_storyboard(self.project_dir)
 
     def _get_start_index(self) -> int:
         """获取开始索引（断点续传）"""
@@ -328,19 +320,13 @@ class SegmentPipelineRunner:
 
     def resume(self):
         """恢复流水线（断点续传）"""
-        pipeline_file = self.project_dir / "segment_pipeline.json"
-
-        if not pipeline_file.exists():
+        if not (self.project_dir / "segment_pipeline.json").exists():
             print("Error: 流水线未初始化")
             return False
 
-        # 读取当前进度
-        with open(pipeline_file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-
-        # 找到第一个非 confirmed 的段
+        segments = self.pipeline.data["segments"]
         resume_index = None
-        for i, seg in enumerate(data["segments"]):
+        for i, seg in enumerate(segments):
             if seg["status"] != "confirmed":
                 resume_index = i
                 break

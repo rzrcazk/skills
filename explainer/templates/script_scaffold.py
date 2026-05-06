@@ -29,8 +29,14 @@ ManimCE 最佳实践：
 """
 
 from manim import *
+from pathlib import Path
 import json
 import os
+
+# Allow imports from parent directory (templates/ → explainer/)
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from templates.shared import COLORS as _SHARED_COLORS, CANVAS_CONFIG
 
 # 分段渲染支持：如果没有定义 SCENE_RANGE，则渲染所有 scenes
 if 'SCENE_RANGE' not in globals():
@@ -38,37 +44,17 @@ if 'SCENE_RANGE' not in globals():
 
 
 class ExplainerScene(Scene):
-    """
-    科普视频场景
-
-    核心原则：
-    1. 知识水平适配 - 严格遵守用户知识水平
-    2. 幽默生动 - 用比喻、拟人、夸张
-    3. 音画同步 - 画面等待音频，确保讲解和动画同步
-    4. 高亮对应 - 配音提到什么，画面高亮什么
-    5. 系列统一 - 固定开场结尾格式
-
-    ManimCE 最佳实践：
-    - 使用 .animate 进行变换动画
-    - 使用 MathTex 渲染数学公式
-    - 使用 rate_func 控制动画节奏
-    - 使用 next_to, to_edge 等相对定位
-    """
+    """科普视频场景 — 知识水平适配、幽默生动、音画同步、系列统一"""
 
     # ========== 1. 配置参数 ==========
     # 画布配置 (横屏 1920x1080)
-    config.pixel_width = 1920
-    config.pixel_height = 1080
-    config.frame_rate = 60
+    config.pixel_width = CANVAS_CONFIG["pixel_width"]
+    config.pixel_height = CANVAS_CONFIG["pixel_height"]
+    config.frame_rate = CANVAS_CONFIG["frame_rate"]
 
-    # 颜色定义
+    # 颜色定义（基础色 + 扩展）
     COLORS = {
-        'background': '#1a1a2e',      # 深蓝背景
-        'primary': '#4ecca3',          # 主色（青色）
-        'secondary': '#e94560',        # 辅助色（红色）
-        'highlight': '#ffc107',        # 高亮色（黄色/金色）
-        'text': '#ffffff',             # 文字白色
-        'text_secondary': '#aaaaaa',   # 次要文字
+        **_SHARED_COLORS,
         'grid': '#2a2a4e',             # 网格线
         'axis': '#444466',             # 坐标轴
     }
@@ -791,31 +777,4 @@ class ExplainerScene(Scene):
 8. 字幕退场：使用 show_subtitle_timed() 或 show_subtitle_with_audio()
 9. 系列开场固定格式：play_intro() - 0号幕，必须说"我是老朋友大魔王"
 10. 系列结尾固定格式：play_outro() - 98/99号幕，下期预告必须用户确认
-
-LaTeX 公式（默认使用）：
-11. 使用 create_formula_latex() 渲染数学公式（需要安装 LaTeX）
-12. LaTeX 安装：macOS: brew install --cask mactex-no-gui
-13. LaTeX 安装：Ubuntu: sudo apt install texlive texlive-fonts-extra
-14. 示例：self.create_formula_latex(r"a^2 + b^2 = c^2")
-
-分段渲染（可选）：
-15. 分段流水线会自动设置 SCENE_RANGE = [0, 1, 2] 等
-16. 脚本只渲染 SCENE_RANGE 中指定的 scenes
-17. 用于将长视频拆分为小段生成和确认
-18. 不分段时 SCENE_RANGE = None，渲染所有 scenes
-
-布局约束（避免重叠）：
-15. 使用 SUBTITLE_Y 和 FORMULA_Y 固定字幕/公式位置
-16. 边长标注放在图形外侧，与图形保持 MIN_SPACING 间距
-17. 算式/公式使用 create_formula_latex()，不与字幕重叠
-18. 提到生活例子时，必须画出示意图
-
-内容深度（初中水平）：
-19. 跳过基础计算展示（如 3²=9），直接给出结果
-20. 重点在概念理解和证明过程
-21. 证明动画必须分步骤，每步对应图形变化
-
-角色与下期预告：
-22. 主持人固定为"大魔王"，开场必须说"我是你们的老朋友大魔王"
-23. 下期预告必须用户确认，在生成第6幕前询问"下期您想听什么？"
 """

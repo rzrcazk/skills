@@ -24,6 +24,12 @@ from typing import Any, Dict, List, Optional, Union
 _audio_duration_cache: Dict[str, float] = {}
 
 
+# SRT 时间格式别名
+def format_srt_time(seconds: float) -> str:
+    """将秒数转换为 SRT 时间格式 HH:MM:SS,mmm。"""
+    return format_time(seconds, "srt")
+
+
 def get_audio_duration(audio_path: Union[str, Path]) -> Optional[float]:
     """
     获取音频文件时长（秒）
@@ -393,6 +399,77 @@ def atomic_write_json(
     """
     content = json.dumps(data, ensure_ascii=False, indent=2)
     atomic_write_text(file_path, content, encoding)
+
+
+def generate_srt(subtitles: list, max_chars: int = 40) -> str:
+    """
+    从字幕条目列表生成 SRT 格式字符串。
+
+    Args:
+        subtitles: 列表，每项含 index, start, end, text
+        max_chars: 每行最大字符数（暂未启用换行）
+
+    Returns:
+        str: SRT 格式内容
+    """
+    lines = []
+    for sub in subtitles:
+        lines.append(str(sub["index"]))
+        lines.append(f"{format_srt_time(sub['start'])} --> {format_srt_time(sub['end'])}")
+        lines.append(sub["text"])
+        lines.append("")
+    return "\n".join(lines)
+
+
+def ffmpeg_concat(file_list: List[Path], output: Path, is_audio: bool = False) -> bool:
+    """
+    使用 ffmpeg concat 合并文件列表。
+
+    Args:
+        file_list: 文件路径列表（按顺序）
+        output: 输出文件路径
+        is_audio: True 为音频合并（重编码），False 为视频合并（直接拷贝）
+
+    Returns:
+        bool: 是否成功
+    """
+    if not file_list:
+        return False
+
+    concat_dir = output.parent
+    concat_list = concat_dir / f"concat_list_{output.stem}.txt"
+
+    try:
+        with open(concat_list, 'w', encoding='utf-8') as f:
+            for fp in file_list:
+                f.write(f"file '{fp.absolute()}'\n")
+
+        if is_audio:
+            cmd = [
+                "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                "-i", str(concat_list),
+                "-acodec", "pcm_s16le", "-ar", "44100", "-ac", "2",
+                str(output)
+            ]
+        else:
+            cmd = [
+                "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                "-i", str(concat_list),
+                "-c", "copy",
+                str(output)
+            ]
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"FFmpeg error: {result.stderr}")
+            return False
+        return True
+
+    except FileNotFoundError:
+        print("Error: ffmpeg not found.")
+        return False
+    finally:
+        concat_list.unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

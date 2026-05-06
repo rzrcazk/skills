@@ -27,12 +27,14 @@ import shutil
 import subprocess
 import sys
 import argparse
-import asyncio
+import time
+from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
 from segment_pipeline import SegmentPipeline, Segment
+from utils import format_srt_time, generate_srt, ffmpeg_concat, atomic_write_json
 from config import CONFIG
 from logger import get_logger
 
@@ -88,8 +90,12 @@ class SegmentGenerator:
             # 1. 创建段目录
             seg_dir = self._create_segment_dir(segment)
 
+            # 加载 audio_info 一次，供后续步骤共用
+            audio_info_file = self.audio_dir / "audio_info.json"
+            audio_info = json.loads(audio_info_file.read_text(encoding='utf-8'))
+
             # 2. 生成分段音频（合并本段所有 scenes）
-            self._generate_segment_audio(segment, seg_dir)
+            self._generate_segment_audio(segment, seg_dir, audio_info)
 
             # 3. 创建分段 Manim 脚本
             self._create_segment_script(segment, seg_dir)
@@ -111,7 +117,7 @@ class SegmentGenerator:
                 self._render_segment_video(segment, seg_dir)
 
             # 5. 生成字幕
-            self._generate_subtitle(segment, seg_dir)
+            self._generate_subtitle(segment, seg_dir, audio_info)
 
             # 6. 保存元数据
             self._save_metadata(segment, seg_dir)
@@ -140,18 +146,10 @@ class SegmentGenerator:
         print(f"✓ 创建目录: {seg_dir}")
         return seg_dir
 
-    def _generate_segment_audio(self, segment: Segment, seg_dir: Path):
+    def _generate_segment_audio(self, segment: Segment, seg_dir: Path, audio_info: dict):
         """生成分段音频（合并本段所有 scene 的音频）"""
         print("\n🔊 步骤 1/5: 生成分段音频")
         print("-" * 40)
-
-        # 读取 audio_info.json
-        audio_info_file = self.audio_dir / "audio_info.json"
-        if not audio_info_file.exists():
-            raise FileNotFoundError(f"Audio info not found: {audio_info_file}")
-
-        with open(audio_info_file, 'r', encoding='utf-8') as f:
-            audio_info = json.load(f)
 
         # 找到本段需要的音频文件
         audio_files = []
@@ -172,55 +170,28 @@ class SegmentGenerator:
         # 按 scene 顺序排序
         audio_files.sort(key=lambda x: x["scene"])
 
-        # 生成合并音频的输入列表
-        concat_list = seg_dir / "concat_list.txt"
-        with open(concat_list, 'w', encoding='utf-8') as f:
-            for af in audio_files:
-                f.write(f"file '{af['file']}'\n")
-
         # 使用 ffmpeg 合并音频
         output_audio = seg_dir / "audio.wav"
+        audio_paths = [Path(af["file"]) for af in audio_files]
+        success = ffmpeg_concat(audio_paths, output_audio, is_audio=True)
 
-        cmd = [
-            "ffmpeg", "-y",
-            "-f", "concat",
-            "-safe", "0",
-            "-i", str(concat_list),
-            "-acodec", "pcm_s16le",
-            "-ar", "44100",
-            "-ac", "2",
-            str(output_audio)
-        ]
-
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                raise RuntimeError(f"FFmpeg failed: {result.stderr}")
-
-            print(f"✓ 合并音频: {len(audio_files)} 个文件")
-            print(f"✓ 输出: {output_audio}")
-
-        except FileNotFoundError:
-            print("⚠️  ffmpeg not found, trying alternative method...")
+        if not success:
             # 备用：直接复制第一个音频文件
             if audio_files:
                 shutil.copy2(audio_files[0]["file"], output_audio)
                 print(f"✓ 复制音频（备用方法）: {output_audio}")
-
-        # 清理
-        concat_list.unlink(missing_ok=True)
+            else:
+                raise RuntimeError("No audio files available for this segment")
+        else:
+            print(f"✓ 合并音频: {len(audio_files)} 个文件")
+            print(f"✓ 输出: {output_audio}")
 
     def _create_segment_script(self, segment: Segment, seg_dir: Path):
         """创建分段 Manim 脚本"""
         print("\n📝 步骤 2/5: 创建分段脚本")
         print("-" * 40)
 
-        if not self.script_file.exists():
-            raise FileNotFoundError(f"Script file not found: {self.script_file}")
-
-        # 读取原脚本
-        with open(self.script_file, 'r', encoding='utf-8') as f:
-            original_script = f.read()
+        original_script = self.script_file.read_text(encoding='utf-8')
 
         # 创建分段脚本
         seg_script = self._modify_script_for_segment(original_script, segment)
@@ -234,35 +205,22 @@ class SegmentGenerator:
 
     def _modify_script_for_segment(self, script: str, segment: Segment) -> str:
         """修改脚本，只渲染指定 scenes"""
-        # 提取 scene 范围
-        scene_range = f"SCENE_RANGE = {segment.scenes}"
+        # 注入 SCENE_RANGE 和 construct 过滤逻辑
+        header = f"SCENE_RANGE = {segment.scenes}\n\n"
 
-        # 在脚本开头添加 scene range
-        modified = f'''# Auto-generated segment script
-# Scenes: {segment.scenes}
-# Time range: {segment.time_range}
-
-{scene_range}
-
-# Original script below (modified for segment rendering):
-
-{script}
-'''
-
-        # 修改 construct 方法，只渲染指定 scenes
-        # 在原有脚本中插入过滤逻辑
-        modified = modified.replace(
-            "def construct(self):",
-            f'''def construct(self):
+        # 修改 construct 方法
+        marker = "def construct(self):"
+        assert marker in script, f"Could not find '{marker}' in script"
+        inject = f'''def construct(self):
         # Segment rendering: only scenes {segment.scenes}
-        self._segment_scenes = {segment.scenes}
+        self._segment_scenes = SCENE_RANGE
 '''
-        )
+        modified = header + script.replace(marker, inject, 1)
 
         # 修改音频目录指向
         modified = modified.replace(
             'self.audio_dir = "audio"',
-            f'self.audio_dir = "."'
+            'self.audio_dir = "."'
         )
 
         return modified
@@ -296,6 +254,7 @@ class SegmentGenerator:
 
         # 重试循环
         last_error = None
+        result = None
         for attempt in range(max_retries):
             if attempt > 0:
                 print(f"\n🔄 第 {attempt + 1}/{max_retries} 次重试...")
@@ -304,15 +263,12 @@ class SegmentGenerator:
                 result = subprocess.run(cmd, cwd=seg_dir, capture_output=True, text=True)
 
                 if result.returncode == 0:
-                    # 成功，跳出重试循环
                     break
 
-                # 失败，记录错误
                 last_error = f"Manim render failed: {result.returncode}"
                 print(f"  渲染失败 (attempt {attempt + 1}): {last_error}")
 
                 if attempt < max_retries - 1:
-                    import time
                     time.sleep(CONFIG.segment.retry_delay)
 
             except FileNotFoundError:
@@ -322,14 +278,12 @@ class SegmentGenerator:
                 print(f"  异常 (attempt {attempt + 1}): {e}")
 
                 if attempt < max_retries - 1:
-                    import time
                     time.sleep(CONFIG.segment.retry_delay)
 
         else:
-            # 所有重试都失败
             print(f"\n❌ 渲染失败，已重试 {max_retries} 次")
-            print(f"STDOUT: {result.stdout if 'result' in dir() else 'N/A'}")
-            print(f"STDERR: {result.stderr if 'result' in dir() else 'N/A'}")
+            print(f"STDOUT: {result.stdout if result else 'N/A'}")
+            print(f"STDERR: {result.stderr if result else 'N/A'}")
             raise RuntimeError(f"Manim render failed after {max_retries} retries: {last_error}")
 
         # 查找生成的视频
@@ -352,19 +306,10 @@ class SegmentGenerator:
         else:
             raise RuntimeError("Video file not found after render")
 
-    def _generate_subtitle(self, segment: Segment, seg_dir: Path):
+    def _generate_subtitle(self, segment: Segment, seg_dir: Path, audio_info: dict):
         """生成字幕文件"""
         print("\n📜 步骤 4/5: 生成字幕")
         print("-" * 40)
-
-        # 读取 audio_info
-        audio_info_file = self.audio_dir / "audio_info.json"
-        if not audio_info_file.exists():
-            print("⚠️  audio_info.json not found, skipping subtitle")
-            return
-
-        with open(audio_info_file, 'r', encoding='utf-8') as f:
-            audio_info = json.load(f)
 
         # 收集本段的字幕
         subtitles = []
@@ -386,29 +331,11 @@ class SegmentGenerator:
                 current_time += duration
 
         # 生成 SRT 格式
-        srt_content = self._generate_srt(subtitles)
+        srt_content = generate_srt(subtitles)
         srt_file = seg_dir / "subtitle.srt"
         srt_file.write_text(srt_content, encoding='utf-8')
 
         print(f"✓ 字幕生成: {srt_file} ({len(subtitles)} 条)")
-
-    def _generate_srt(self, subtitles: List[Dict]) -> str:
-        """生成 SRT 格式字幕"""
-        lines = []
-        for sub in subtitles:
-            lines.append(str(sub["index"]))
-            lines.append(f"{self._format_srt_time(sub['start'])} --> {self._format_srt_time(sub['end'])}")
-            lines.append(sub["text"])
-            lines.append("")
-        return "\n".join(lines)
-
-    def _format_srt_time(self, seconds: float) -> str:
-        """格式化为 SRT 时间格式"""
-        hours = int(seconds // 3600)
-        minutes = int((seconds % 3600) // 60)
-        secs = int(seconds % 60)
-        millis = int((seconds % 1) * 1000)
-        return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
 
     def _save_metadata(self, segment: Segment, seg_dir: Path):
         """保存段元数据"""
@@ -417,7 +344,7 @@ class SegmentGenerator:
 
         metadata = {
             "segment": segment.to_dict(),
-            "generated_at": subprocess.check_output(["date", "+%Y-%m-%dT%H:%M:%S"]).decode().strip(),
+            "generated_at": datetime.now().isoformat(),
             "files": {
                 "video": str(seg_dir / "video.mp4"),
                 "audio": str(seg_dir / "audio.wav"),
@@ -427,8 +354,7 @@ class SegmentGenerator:
         }
 
         metadata_file = seg_dir / "metadata.json"
-        with open(metadata_file, 'w', encoding='utf-8') as f:
-            json.dump(metadata, f, ensure_ascii=False, indent=2)
+        atomic_write_json(metadata_file, metadata)
 
         print(f"✓ 元数据: {metadata_file}")
 

@@ -26,32 +26,12 @@ from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).parent))
 from state_manager import StateManager
-
-STEP_NAMES = {
-    0: "select_category",
-    1: "knowledge_level",
-    2: "topic_analysis",
-    2.5: "outline_confirmation",
-    3: "html_preview",
-    3.5: "preview_confirmation",
-    4: "storyboard",
-    4.5: "storyboard_confirmation",
-    5: "generate_tts",
-    6: "validate_audio",
-    7: "scaffold",
-    8: "implement",
-    9: "check_and_render",
-    10: "update_index",
-}
+from constants import STEP_NAMES
 
 
 def get_manager(content_dir: Path) -> StateManager:
-    """获取 StateManager，自动迁移旧状态文件"""
-    manager = StateManager(content_dir)
-    workflow_file = content_dir / "workflow_state.json"
-    if not manager.state_file.exists() and workflow_file.exists():
-        manager.migrate_from_workflow_state(workflow_file)
-    return manager
+    """获取 StateManager（构造时自动迁移旧状态文件）"""
+    return StateManager(content_dir)
 
 
 def update_step(manager: StateManager, step: float, status: str = None):

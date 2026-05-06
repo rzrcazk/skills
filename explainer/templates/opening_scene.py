@@ -1,47 +1,22 @@
-"""
-Opening Scene Template
-系列开场场景模板 - 标准片头
-
-功能：
-- 系列Logo淡入动画
-- 标题打字机效果
-- 副标题/集数显示
-- 轻快背景音乐
-
-使用方式：
-1. 导入此模板: from templates.opening_scene import OpeningScene
-2. 继承或直接使用 OpeningScene
-3. 配置系列名称和集数信息
-"""
+"""Opening Scene Template — 系列开场场景模板"""
 
 from manim import *
 import os
+import sys
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from templates.shared import COLORS, CANVAS_CONFIG
 
 
 class OpeningScene(Scene):
-    """
-    系列开场模板 - 标准片头
-
-    总时长：约7-8秒
-    - Logo淡入：2秒
-    - 标题打字机：3秒
-    - 副标题显示：2秒
-    """
+    """系列开场模板"""
 
     # 画布配置
-    config.pixel_width = 1920
-    config.pixel_height = 1080
-    config.frame_rate = 60
+    config.pixel_width = CANVAS_CONFIG["pixel_width"]
+    config.pixel_height = CANVAS_CONFIG["pixel_height"]
+    config.frame_rate = CANVAS_CONFIG["frame_rate"]
 
     # 配色方案
-    COLORS = {
-        'background': '#1a1a2e',      # 深蓝背景
-        'primary': '#4ecca3',          # 主色（青色）
-        'secondary': '#e94560',        # 辅助色（红色）
-        'highlight': '#ffc107',        # 高亮色（黄色/金色）
-        'text': '#ffffff',             # 文字白色
-        'text_secondary': '#aaaaaa',   # 次要文字
-    }
+    COLORS = COLORS
 
     # 系列信息（可配置）
     SERIES_NAME = "数学之旅"          # 系列名称
@@ -233,42 +208,3 @@ class OpeningSceneMinimal(OpeningScene):
 
         self.play(FadeIn(episode), run_time=1)
         self.wait(1)
-
-
-# ========== 配置指南 ==========
-"""
-使用说明：
-
-1. 基础使用（继承模板）
-   ```python
-   from templates.opening_scene import OpeningScene
-
-   class MyOpening(OpeningScene):
-       SERIES_NAME = "物理世界"
-       EPISODE_NUMBER = 3
-       EPISODE_TITLE = "牛顿定律"
-       SUBTITLE = "高中物理基础"
-   ```
-
-2. 使用自定义Logo
-   - 将Logo图片放在 assets/logo.png
-   - 设置 LOGO_FALLBACK = False
-   - 或使用几何Logo（默认）
-
-3. 音频配置
-   - 准备开场音频：audio/audio_000_开场.wav
-   - 时长建议：7-8秒
-   - 内容建议：欢迎词 + 系列介绍 + 本期主题
-
-4. 修改动画时长
-   - 调整各步骤的 run_time 参数
-   - 总时长应与音频匹配
-
-配色方案说明：
-- background: 背景色
-- primary: 主标题色
-- secondary: 强调色
-- highlight: 高亮色
-- text: 正文白色
-- text_secondary: 次要文字
-"""

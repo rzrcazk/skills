@@ -20,6 +20,7 @@ Segment Merger - 分段视频合并器
 """
 
 import json
+import shutil
 import subprocess
 import argparse
 import sys
@@ -28,6 +29,7 @@ from typing import List, Optional
 
 sys.path.insert(0, str(Path(__file__).parent))
 from segment_pipeline import SegmentPipeline, Segment
+from utils import format_srt_time, parse_srt_time, generate_srt, ffmpeg_concat
 
 
 class SegmentMerger:
@@ -132,7 +134,6 @@ class SegmentMerger:
             output_dir.mkdir(exist_ok=True)
 
             final_output = output_dir / final_name
-            import shutil
             shutil.copy2(output_file, final_output)
             print(f"   最终视频已拷贝到: {final_output}")
 
@@ -142,44 +143,19 @@ class SegmentMerger:
         """使用 ffmpeg 合并视频"""
         print("📼 合并视频...")
 
-        # 创建 concat 列表文件
-        concat_list = self.merged_dir / "video_concat_list.txt"
-        with open(concat_list, 'w', encoding='utf-8') as f:
-            for seg in segments:
-                video_path = self.project_dir / seg.video_path
-                if video_path.exists():
-                    # ffmpeg concat 需要特定格式
-                    f.write(f"file '{video_path.absolute()}'\n")
-                else:
-                    print(f"⚠️  Video not found: {video_path}")
-                    return False
-
-        # 构建 ffmpeg 命令
-        cmd = [
-            "ffmpeg", "-y",
-            "-f", "concat",
-            "-safe", "0",
-            "-i", str(concat_list),
-            "-c", "copy",  # 直接复制，不重新编码
-            str(output_file)
-        ]
-
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True)
-            if result.returncode != 0:
-                print(f"FFmpeg error: {result.stderr}")
+        video_paths = []
+        for seg in segments:
+            video_path = self.project_dir / seg.video_path
+            if video_path.exists():
+                video_paths.append(video_path)
+            else:
+                print(f"⚠️  Video not found: {video_path}")
                 return False
 
+        success = ffmpeg_concat(video_paths, output_file, is_audio=False)
+        if success:
             print(f"✓ 视频合并完成: {output_file}")
-            return True
-
-        except FileNotFoundError:
-            print("Error: ffmpeg not found. Please install ffmpeg.")
-            return False
-
-        finally:
-            # 清理临时文件
-            concat_list.unlink(missing_ok=True)
+        return success
 
     def _merge_subtitles(self, segments: List[Segment], output_file: Path):
         """合并字幕文件"""
@@ -207,7 +183,7 @@ class SegmentMerger:
             time_offset += (seg.end_time - seg.start_time)
 
         # 生成合并后的 SRT
-        srt_content = self._generate_srt(all_subtitles)
+        srt_content = generate_srt(all_subtitles)
         output_file.write_text(srt_content, encoding='utf-8')
 
         print(f"✓ 字幕合并完成: {len(all_subtitles)} 条字幕")
@@ -227,8 +203,8 @@ class SegmentMerger:
 
                 # 解析时间
                 start_str, end_str = time_line.split(' --> ')
-                start = self._parse_srt_time(start_str)
-                end = self._parse_srt_time(end_str)
+                start = parse_srt_time(start_str)
+                end = parse_srt_time(end_str)
 
                 subtitles.append({
                     "index": int(index),
@@ -238,36 +214,6 @@ class SegmentMerger:
                 })
 
         return subtitles
-
-    def _parse_srt_time(self, time_str: str) -> float:
-        """解析 SRT 时间格式"""
-        # 格式: 00:00:05,000
-        time_str = time_str.replace(',', '.')
-        parts = time_str.split(':')
-
-        hours = float(parts[0])
-        minutes = float(parts[1])
-        seconds = float(parts[2])
-
-        return hours * 3600 + minutes * 60 + seconds
-
-    def _generate_srt(self, subtitles: List[dict]) -> str:
-        """生成 SRT 格式"""
-        lines = []
-        for sub in subtitles:
-            lines.append(str(sub["index"]))
-            lines.append(f"{self._format_srt_time(sub['start'])} --> {self._format_srt_time(sub['end'])}")
-            lines.append(sub["text"])
-            lines.append("")
-        return "\n".join(lines)
-
-    def _format_srt_time(self, seconds: float) -> str:
-        """格式化为 SRT 时间格式"""
-        hours = int(seconds // 3600)
-        minutes = int((seconds % 3600) // 60)
-        secs = int(seconds % 60)
-        millis = int((seconds % 1) * 1000)
-        return f"{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}"
 
     def get_merge_info(self) -> dict:
         """获取合并信息"""

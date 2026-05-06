@@ -26,6 +26,9 @@ import sys
 import argparse
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).parent))
+from utils import format_srt_time
+
 
 def load_audio_info(audio_dir: Path) -> list:
     """从 audio_info.json 读取场景信息，按 scene 编号排序。"""
@@ -84,18 +87,6 @@ def calculate_timestamps(entries: list, gap: float = 0.5, end_buffer: float = 0.
         t += gap + duration
 
     return result
-
-
-def format_srt_time(seconds: float) -> str:
-    """将秒数转换为 SRT 时间格式 HH:MM:SS,mmm。"""
-    total_ms = round(seconds * 1000)
-    ms = total_ms % 1000
-    total_s = total_ms // 1000
-    s = total_s % 60
-    total_m = total_s // 60
-    m = total_m % 60
-    h = total_m // 60
-    return f'{h:02d}:{m:02d}:{s:02d},{ms:03d}'
 
 
 def wrap_text(text: str, max_chars: int = 25) -> list:

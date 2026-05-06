@@ -49,8 +49,6 @@ description: |
 - 禁止在用户确认前生成下一幕
 - 禁止跳过渲染步骤直接要求用户想象效果
 
-**offline**：导出 prompt 到 Claude.ai 完成；**script**：直接运行脚本；**online**：Claude Code 执行
-
 ---
 
 ## 项目初始化
@@ -256,3 +254,11 @@ sudo apt install texlive texlive-fonts-extra texlive-latex-extra  # Ubuntu
 - **manimce-best-practices**: ManimCE 动画详细写法参考
 - **manim-composer**: 将模糊想法转化为详细分镜计划
 - **tutor**: 数学解题辅导视频（类似工作流，专注解题）
+
+---
+
+## 替代方案：分段流水线
+
+对于长视频（>3分钟），可使用分段流水线替代步骤8-9：
+自动生成→播放确认→累积合并，支持断点续传和后台预生成。
+详见 `docs/SEGMENT_QUICKSTART.md`。
